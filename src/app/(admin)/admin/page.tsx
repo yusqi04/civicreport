@@ -9,6 +9,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { AutoRefresh } from "@/components/auto-refresh";
+import { AdminDeleteReportButton } from "@/components/admin-delete-report-button";
 import {
   CheckCircle2,
   ClipboardList,
@@ -76,6 +78,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
+      <AutoRefresh intervalMs={15000} />
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard Admin</h1>
         <p className="text-sm text-muted-foreground">
@@ -124,10 +127,10 @@ export default async function AdminDashboardPage() {
           ) : (
             <ul className="divide-y">
               {recentRes.rows.map((row) => (
-                <li key={row.id}>
+                <li key={row.id} className="flex items-center gap-2">
                   <Link
                     href={`/admin/laporan/${row.id}`}
-                    className="flex items-center justify-between gap-3 py-3 transition-colors hover:bg-muted/50"
+                    className="min-w-0 flex-1 py-3 transition-colors hover:bg-muted/50"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{row.title}</p>
@@ -140,8 +143,9 @@ export default async function AdminDashboardPage() {
                         })}
                       </p>
                     </div>
-                    <StatusBadge status={row.status} />
                   </Link>
+                  <StatusBadge status={row.status} />
+                  <AdminDeleteReportButton reportId={row.id} compact />
                 </li>
               ))}
             </ul>

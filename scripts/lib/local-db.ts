@@ -9,7 +9,9 @@ const USER = "postgres";
 const PASSWORD = "password";
 const DB_NAME = "civicreport";
 
-export function loadEnvFile(): void {
+export function loadEnvFile(
+  options: { overrideKeys?: readonly string[] } = {}
+): void {
   const envPath = path.join(process.cwd(), ".env.local");
   if (!fs.existsSync(envPath)) return;
   const content = fs.readFileSync(envPath, "utf8");
@@ -19,8 +21,18 @@ export function loadEnvFile(): void {
     const eq = trimmed.indexOf("=");
     if (eq === -1) continue;
     const key = trimmed.slice(0, eq).trim();
-    const value = trimmed.slice(eq + 1).trim();
-    if (!(key in process.env)) process.env[key] = value;
+    const rawValue = trimmed.slice(eq + 1).trim();
+    const quote = rawValue[0];
+    const value =
+      (quote === "'" || quote === '"') && rawValue.endsWith(quote)
+        ? rawValue.slice(1, -1)
+        : rawValue;
+    if (
+      !(key in process.env) ||
+      options.overrideKeys?.includes(key)
+    ) {
+      process.env[key] = value;
+    }
   }
 }
 
@@ -29,6 +41,28 @@ export function databaseUrl(): string {
     process.env.DATABASE_URL ??
     `postgres://${USER}:${PASSWORD}@${HOST}:${PORT}/${DB_NAME}`
   );
+}
+
+function isLocalDatabaseUrl(connectionString: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(connectionString);
+  } catch {
+    throw new Error(
+      "DATABASE_URL harus berupa URL PostgreSQL yang valid dengan hostname."
+    );
+  }
+
+  if (
+    (url.protocol !== "postgres:" && url.protocol !== "postgresql:") ||
+    !url.hostname
+  ) {
+    throw new Error(
+      "DATABASE_URL harus berupa URL PostgreSQL yang valid dengan hostname."
+    );
+  }
+
+  return ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
 }
 
 async function canConnect(timeoutMs = 2000): Promise<boolean> {
@@ -51,13 +85,9 @@ async function canConnect(timeoutMs = 2000): Promise<boolean> {
   }
 }
 
-async function applyMigrations(): Promise<void> {
+async function applyMigrations(connectionString = databaseUrl()): Promise<void> {
   const client = new Client({
-    host: HOST,
-    port: PORT,
-    user: USER,
-    password: PASSWORD,
-    database: DB_NAME,
+    connectionString,
   });
   await client.connect();
   try {
@@ -101,9 +131,18 @@ export type LocalDbHandle = { stop: () => Promise<void> };
 
 export async function startLocalDb(): Promise<LocalDbHandle> {
   loadEnvFile();
+  const url = databaseUrl();
+
+  if (!isLocalDatabaseUrl(url)) {
+    console.log(
+      `[db] memakai PostgreSQL eksternal (${new URL(url).hostname}) dari DATABASE_URL...`
+    );
+    await applyMigrations(url);
+    return { stop: async () => {} };
+  }
 
   if (await canConnect()) {
-    await applyMigrations();
+    await applyMigrations(url);
     console.log(`[db] PostgreSQL sudah berjalan di port ${PORT}`);
     return { stop: async () => {} };
   }
@@ -133,7 +172,7 @@ export async function startLocalDb(): Promise<LocalDbHandle> {
     // database sudah ada
   }
 
-  await applyMigrations();
+  await applyMigrations(url);
 
   return {
     stop: async () => {

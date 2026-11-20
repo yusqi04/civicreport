@@ -27,6 +27,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Search, Inbox } from "lucide-react";
+import { AdminDeleteReportButton } from "@/components/admin-delete-report-button";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 const VALID_STATUS = [
   "submitted",
@@ -120,6 +122,7 @@ export default async function AdminLaporanPage({
 
   return (
     <div className="space-y-4">
+      <AutoRefresh intervalMs={15000} />
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Seluruh Laporan</h1>
         <p className="text-sm text-muted-foreground">
@@ -216,6 +219,7 @@ export default async function AdminLaporanPage({
                     <TableHead>Kategori</TableHead>
                     <TableHead>Tanggal</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="w-16 text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -244,6 +248,9 @@ export default async function AdminLaporanPage({
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={row.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <AdminDeleteReportButton reportId={row.id} compact />
                       </TableCell>
                     </TableRow>
                   ))}

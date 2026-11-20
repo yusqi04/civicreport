@@ -4,6 +4,9 @@ import { requireAdmin } from "@/lib/auth/guards";
 import { pool } from "@/lib/db";
 import { StatusBadge } from "@/components/status-badge";
 import { StatusChangeForm } from "@/components/status-change-form";
+import { AdminDeleteReportButton } from "@/components/admin-delete-report-button";
+import { AutoRefresh } from "@/components/auto-refresh";
+import { RelativeTime } from "@/components/relative-time";
 import {
   Card,
   CardContent,
@@ -72,20 +75,23 @@ export default async function AdminDetailLaporanPage({
        FROM report_status_history h
        JOIN profiles p ON p.id = h.changed_by
        WHERE h.report_id = $1
-       ORDER BY h.created_at DESC`,
+       ORDER BY h.created_at ASC`,
       [id]
     ),
   ]);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <AutoRefresh intervalMs={10000} />
+
+      <div className="flex items-center justify-between gap-2">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/admin/laporan">
             <ChevronLeft className="mr-1 h-4 w-4" aria-hidden />
             Daftar Laporan
           </Link>
         </Button>
+        <AdminDeleteReportButton reportId={report.id} />
       </div>
 
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -93,12 +99,7 @@ export default async function AdminDetailLaporanPage({
           <h1 className="text-2xl font-bold tracking-tight">{report.title}</h1>
           <p className="text-sm text-muted-foreground">
             {report.category_name} ·{" "}
-            {new Date(report.created_at).toLocaleDateString("id-ID", {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
+            <RelativeTime date={report.created_at} />
           </p>
         </div>
         <StatusBadge status={report.status} />
@@ -185,9 +186,10 @@ export default async function AdminDetailLaporanPage({
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Tindak Lanjut</CardTitle>
+              <CardTitle className="text-base">Verifikasi & Status</CardTitle>
               <CardDescription>
-                Ubah status disimpan atomik beserta riwayatnya.
+                Atur status manual: Belum → Sedang → Sudah ditangani. Semua
+                perubahan tercatat di riwayat.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -201,6 +203,9 @@ export default async function AdminDetailLaporanPage({
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Riwayat Status</CardTitle>
+              <CardDescription>
+                Masuk, diproses, hingga selesai — lengkap dengan waktu.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <ol className="space-y-0">
@@ -216,6 +221,10 @@ export default async function AdminDetailLaporanPage({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge status={h.new_status} />
+                        <RelativeTime
+                          date={h.created_at}
+                          className="text-xs text-muted-foreground"
+                        />
                         <span className="text-xs text-muted-foreground">
                           {new Date(h.created_at).toLocaleString("id-ID", {
                             day: "numeric",

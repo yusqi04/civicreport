@@ -1,0 +1,86 @@
+{
+  "planHash": "60c114814398a815640ff4bd04848a67dda987ffea118c4202cc9619c2572743",
+  "phase": "standalone",
+  "recordedAtUtc": "2026-11-18T11:22:30.3437173Z",
+  "retryCount": 1,
+  "resetBaseline": false,
+  "complete": true,
+  "result": {
+    "setupSucceeded": true,
+    "setupDurationMs": 0,
+    "setupFailureOutput": null,
+    "assertions": [
+      {
+        "name": "eslint-passes",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E civicreport@0.1.0 lint\r\n\u003E eslint src\r\n\r\n",
+        "durationMs": 58489
+      },
+      {
+        "name": "tests-pass",
+        "kind": "process",
+        "verificationMethod": "test-results",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E civicreport@0.1.0 e2e\r\n\u003E tsx scripts/e2e.ts\r\n\r\n[e2e] admin demo siap: admin@civicreport.test\r\n\r\n[1] Register warga baru\r\n  \u2713 register \u2192 redirect /beranda\r\n  \u2713 sapaan nama tampil\r\n\r\n[2] Buat laporan\r\n  \u2713 banner sukses tampil\r\n  \u2713 laporan terkirim \u2192 halaman detail\r\n  \u2713 status awal Menunggu verifikasi\r\n\r\n[3] Pengunjung melihat beranda tanpa login\r\n  \u2713 localhost langsung membuka beranda\r\n  \u2713 beranda responsif tanpa scroll horizontal (320px)\r\n  \u2713 beranda responsif tanpa scroll horizontal (375px)\r\n  \u2713 beranda responsif tanpa scroll horizontal (768px)\r\n  \u2713 beranda responsif tanpa scroll horizontal (1024px)\r\n  \u2713 beranda responsif tanpa scroll horizontal (1440px)\r\n  \u2713 laporan warga terlihat oleh pengunjung\r\n  \u2713 detail masalah bisa dilihat tanpa login\r\n  \u2713 pengunjung diarahkan ke login\r\n  \u2713 tautan daftar menyimpan tujuan formulir\r\n  \u2713 setelah login langsung ke formulir laporan\r\n  \u2713 formulir responsif tanpa scroll horizontal (320px)\r\n  \u2713 formulir responsif tanpa scroll horizontal (375px)\r\n  \u2713 formulir responsif tanpa scroll horizontal (768px)\r\n  \u2713 formulir responsif tanpa scroll horizontal (1024px)\r\n  \u2713 formulir responsif tanpa scroll horizontal (1440px)\r\n\r\n[4] Warga tidak bisa akses /admin\r\n  \u2713 warga \u2192 redirect /beranda\r\n\r\n[5] Login admin\r\n  \u2713 admin \u2192 redirect /admin\r\n  \u2713 statistik dashboard tampil\r\n  \u2713 dashboard admin responsif tanpa scroll horizontal (320px)\r\n  \u2713 dashboard admin responsif tanpa scroll horizontal (375px)\r\n  \u2713 dashboard admin responsif tanpa scroll horizontal (768px)\r\n  \u2713 dashboard admin responsif tanpa scroll horizontal (1024px)\r\n  \u2713 dashboard admin responsif tanpa scroll horizontal (1440px)\r\n\r\n[6] Admin mengakses beranda dan fitur warga\r\n  \u2713 admin dapat melihat beranda publik\r\n  \u2713 tautan panel admin tersedia dari beranda\r\n  \u2713 admin dapat membuka form laporan warga\r\n\r\n[7] Admin ubah status laporan\r\n  \u2713 laporan muncul di daftar admin\r\n  \u2713 ubah status sukses\r\n  \u2713 badge status ter-update\r\n\r\n[8] Warga melihat status \u0026 riwayat terbaru\r\n  \u2713 warga lihat status Terverifikasi\r\n  \u2713 catatan admin tampil di timeline\r\n\r\n[9] Riwayat \u0026 filter warga\r\n  \u2713 filter verified menampilkan laporan\r\n  \u2713 empty state filter rejected\r\n\r\n[10] Update profil\r\n  \u2713 update profil sukses\r\n\r\n[e2e] Selesai. SEMUA LULUS \u2713\r\n",
+        "durationMs": 129736,
+        "testResults": {
+          "testFramework": "unknown",
+          "runnerDetectedFrom": "none",
+          "testsTotal": 0,
+          "testsPassed": 0,
+          "testsFailed": 0,
+          "testsSkipped": 0,
+          "parseFailed": true
+        }
+      }
+    ],
+    "executions": [
+      {
+        "source": "devServer",
+        "resolvedExecutable": "D:\\laragon\\bin\\nodejs\\node-v24.13.1-win-x64\\npm.CMD",
+        "args": [
+          "run",
+          "dev"
+        ],
+        "cwd": "D:\\Portofolyoo\\CivicReport",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "eslint-passes",
+        "resolvedExecutable": "D:\\laragon\\bin\\nodejs\\node-v24.13.1-win-x64\\npm.CMD",
+        "args": [
+          "run",
+          "lint"
+        ],
+        "cwd": "D:\\Portofolyoo\\CivicReport",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "tests-pass",
+        "resolvedExecutable": "D:\\laragon\\bin\\nodejs\\node-v24.13.1-win-x64\\npm.CMD",
+        "args": [
+          "run",
+          "e2e"
+        ],
+        "cwd": "D:\\Portofolyoo\\CivicReport",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      }
+    ]
+  }
+}

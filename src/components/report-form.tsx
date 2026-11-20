@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState, useActionState, useRef } from "react";
+import { useEffect, useState, useActionState, useRef, startTransition } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, ImagePlus, Loader2, X } from "lucide-react";
+import { AlertCircle, ImagePlus, Loader2, MapPin, X } from "lucide-react";
 import { createReportAction, type CreateReportState } from "@/app/(warga)/laporan/actions";
+import { extractGpsFromFile, reverseGeocode } from "@/lib/exif";
 import {
+  ALLOWED_IMAGE_TYPES,
   MAX_PHOTO_BYTES,
   reportFormSchema,
   type ReportFormInput,
@@ -22,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { LocationPicker, type PickedLocation } from "@/components/location-picker";
 
 type Category = { id: string; name: string };
 
@@ -30,9 +33,10 @@ export function ReportForm({ categories }: { categories: Category[] }) {
     CreateReportState,
     FormData
   >(createReportAction, null);
-  const [showCoords, setShowCoords] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [photoError, setErrorPhoto] = useState<string | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<string | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<ReportFormInput>({
@@ -51,9 +55,13 @@ export function ReportForm({ categories }: { categories: Category[] }) {
     register,
     handleSubmit,
     setValue,
+    getValues,
     formState: { errors },
   } = form;
   const categoryId = useWatch({ control: form.control, name: "category_id" });
+  const locationValue = useWatch({ control: form.control, name: "location" });
+  const latitudeValue = useWatch({ control: form.control, name: "latitude" });
+  const longitudeValue = useWatch({ control: form.control, name: "longitude" });
   const photoRef = register("photo");
 
   useEffect(() => {
@@ -65,15 +73,17 @@ export function ReportForm({ categories }: { categories: Category[] }) {
   const onSubmit = handleSubmit((data) => {
     const fileList = data.photo as FileList | undefined;
     const file = fileList && fileList.length > 0 ? fileList[0] : null;
-    if (file) {
-      if (!file.type.startsWith("image/")) {
-        setErrorPhoto("Foto harus berupa gambar");
-        return;
-      }
-      if (file.size > MAX_PHOTO_BYTES) {
-        setErrorPhoto("Ukuran foto maksimal 2 MB");
-        return;
-      }
+    if (!file) {
+      setErrorPhoto("Foto bukti wajib diunggah");
+      return;
+    }
+    if (!file.type.startsWith("image/") || !ALLOWED_IMAGE_TYPES[file.type]) {
+      setErrorPhoto("Foto harus berformat JPG, PNG, WebP, atau GIF");
+      return;
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      setErrorPhoto("Ukuran foto maksimal 2 MB");
+      return;
     }
     setErrorPhoto(null);
 
@@ -85,25 +95,68 @@ export function ReportForm({ categories }: { categories: Category[] }) {
     fd.set("latitude", data.latitude ?? "");
     fd.set("longitude", data.longitude ?? "");
     if (file) fd.set("photo", file);
-    formAction(fd);
+    startTransition(() => {
+      formAction(fd);
+    });
   });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLocationChange = (loc: PickedLocation) => {
+    setValue("location", loc.location, { shouldValidate: true });
+    setValue("latitude", String(loc.latitude), { shouldValidate: true });
+    setValue("longitude", String(loc.longitude), { shouldValidate: true });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     photoRef.onChange(e);
     const file = e.target.files?.[0];
+    setErrorPhoto(null);
     if (preview) URL.revokeObjectURL(preview);
     setPreview(file ? URL.createObjectURL(file) : null);
+    setGpsStatus(null);
+
+    if (!file) return;
+
+    setGpsLoading(true);
+    try {
+      const gps = await extractGpsFromFile(file);
+      if (!gps) {
+        setGpsStatus("Foto tidak memiliki GPS. Pilih lokasi secara manual.");
+        return;
+      }
+
+      setValue("latitude", String(gps.latitude), { shouldValidate: true });
+      setValue("longitude", String(gps.longitude), { shouldValidate: true });
+      setGpsStatus(
+        `Lokasi otomatis dari foto: ${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}`
+      );
+
+      const currentLocation = getValues("location").trim();
+      if (!currentLocation) {
+        const address = await reverseGeocode(gps.latitude, gps.longitude);
+        if (address) {
+          setValue("location", address, { shouldValidate: true });
+          setGpsStatus((s) => (s ? `${s} → ${address}` : address));
+        }
+      }
+    } catch {
+      setGpsStatus("Gagal membaca GPS dari foto. Pilih lokasi manual.");
+    } finally {
+      setGpsLoading(false);
+    }
   };
 
   const clearFile = () => {
     if (fileRef.current) fileRef.current.value = "";
-    photoRef.onChange({ target: { value: "" } } as React.ChangeEvent<HTMLInputElement>);
+    photoRef.onChange({
+      target: { name: photoRef.name, value: "" },
+    } as React.ChangeEvent<HTMLInputElement>);
     if (preview) URL.revokeObjectURL(preview);
     setPreview(null);
+    setGpsStatus(null);
   };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5" noValidate>
+    <form onSubmit={onSubmit} className="space-y-6" noValidate>
       {state?.error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -111,38 +164,40 @@ export function ReportForm({ categories }: { categories: Category[] }) {
         </Alert>
       )}
 
-      <div className="space-y-2">
-        <Label htmlFor="title">Judul Laporan</Label>
-        <Input
-          id="title"
-          placeholder="Contoh: Jalan berlubang di depan pasar"
-          {...register("title")}
-        />
-        {errors.title && (
-          <p className="text-sm text-destructive">{errors.title.message}</p>
-        )}
-      </div>
+      <div className="grid gap-5 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="title">Judul Laporan</Label>
+          <Input
+            id="title"
+            placeholder="Contoh: Jalan berlubang di depan pasar"
+            {...register("title")}
+          />
+          {errors.title && (
+            <p className="text-sm text-destructive">{errors.title.message}</p>
+          )}
+        </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="category_id">Kategori</Label>
-        <Select
-          value={categoryId || undefined}
-          onValueChange={(value) => setValue("category_id", value, { shouldValidate: true })}
-        >
-          <SelectTrigger id="category_id" className="w-full">
-            <SelectValue placeholder="Pilih kategori masalah" />
-          </SelectTrigger>
-          <SelectContent>
-            {categories.map((cat) => (
-              <SelectItem key={cat.id} value={cat.id}>
-                {cat.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {errors.category_id && (
-          <p className="text-sm text-destructive">{errors.category_id.message}</p>
-        )}
+        <div className="space-y-2">
+          <Label htmlFor="category_id">Kategori</Label>
+          <Select
+            value={categoryId || undefined}
+            onValueChange={(value) => setValue("category_id", value, { shouldValidate: true })}
+          >
+            <SelectTrigger id="category_id" className="w-full">
+              <SelectValue placeholder="Pilih kategori masalah" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  {cat.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {errors.category_id && (
+            <p className="text-sm text-destructive">{errors.category_id.message}</p>
+          )}
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -159,70 +214,41 @@ export function ReportForm({ categories }: { categories: Category[] }) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="location">Lokasi (alamat/teks)</Label>
-        <Input
-          id="location"
-          placeholder="Contoh: Jl. Merdeka No. 10, Kel. Sukamaju"
-          {...register("location")}
+        <Label htmlFor="location">Lokasi</Label>
+        <LocationPicker
+          value={locationValue ?? ""}
+          latitude={latitudeValue ?? ""}
+          longitude={longitudeValue ?? ""}
+          onChange={handleLocationChange}
+          disabled={pending}
         />
+        {gpsStatus && (
+          <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+            <span>{gpsStatus}</span>
+          </p>
+        )}
         {errors.location && (
           <p className="text-sm text-destructive">{errors.location.message}</p>
         )}
       </div>
 
       <div className="space-y-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="px-0 text-muted-foreground"
-          onClick={() => setShowCoords((v) => !v)}
-        >
-          {showCoords ? "− Sembunyikan koordinat" : "+ Tambahkan koordinat (opsional)"}
-        </Button>
-        {showCoords && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="latitude">Latitude</Label>
-              <Input
-                id="latitude"
-                inputMode="decimal"
-                placeholder="-6.2"
-                {...register("latitude")}
-              />
-              {errors.latitude && (
-                <p className="text-sm text-destructive">{errors.latitude.message}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="longitude">Longitude</Label>
-              <Input
-                id="longitude"
-                inputMode="decimal"
-                placeholder="106.8"
-                {...register("longitude")}
-              />
-              {errors.longitude && (
-                <p className="text-sm text-destructive">{errors.longitude.message}</p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="photo">Foto Bukti (opsional, maks. 2 MB)</Label>
+        <Label htmlFor="photo">Foto Bukti (wajib, maks. 2 MB)</Label>
         <div className="flex items-center gap-3">
           <Input
             id="photo"
+            name={photoRef.name}
             type="file"
             accept="image/jpeg,image/png,image/webp,image/gif"
+            required
+            aria-required="true"
             ref={(el) => {
               photoRef.ref(el);
               fileRef.current = el;
             }}
             onChange={handleFileChange}
-            className="max-w-sm"
+            className="max-w-full sm:max-w-md"
           />
           {preview && (
             <Button
@@ -241,12 +267,18 @@ export function ReportForm({ categories }: { categories: Category[] }) {
             {photoError ?? "Foto tidak valid"}
           </p>
         )}
+        {gpsLoading && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            Membaca lokasi GPS dari foto…
+          </p>
+        )}
         {preview && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={preview}
             alt="Pratinjau foto"
-            className="h-32 w-32 rounded-lg border object-cover"
+            className="aspect-square h-36 w-36 rounded-xl border object-cover sm:h-44 sm:w-44"
           />
         )}
       </div>

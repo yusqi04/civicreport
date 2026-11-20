@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useActionState, useState } from "react";
+import { useEffect, useState, useActionState } from "react";
 import { useRouter } from "next/navigation";
 import {
   changeStatusAction,
   type ChangeStatusState,
 } from "@/app/(admin)/admin/laporan/actions";
+import { feedStatusMeta } from "@/lib/feed-status";
 import { STATUS_LABELS } from "@/lib/status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -52,11 +53,11 @@ export function StatusChangeForm({
   const [newStatus, setNewStatus] = useState("");
   const [note, setNote] = useState("");
   const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
 
   const options = TRANSITIONS[currentStatus] ?? [];
+  const currentMeta = feedStatusMeta(currentStatus);
+  const currentLabel = STATUS_LABELS[currentStatus] ?? currentStatus;
 
-  // Penyesuaian state saat render (pola resmi React) untuk merespons sukses aksi.
   if (state?.success && open) {
     setOpen(false);
     setNewStatus("");
@@ -70,8 +71,15 @@ export function StatusChangeForm({
 
   if (options.length === 0) {
     return (
-      <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
-        Status akhir — tidak ada tindakan lanjutan.
+      <div className="space-y-3">
+        <div
+          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${currentMeta.className}`}
+        >
+          {currentLabel}
+        </div>
+        <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+          Status akhir — tidak ada tindakan lanjutan.
+        </div>
       </div>
     );
   }
@@ -87,6 +95,15 @@ export function StatusChangeForm({
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Status saat ini:</span>
+        <span
+          className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${currentMeta.className}`}
+        >
+          {currentLabel}
+        </span>
+      </div>
+
       {state?.error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -101,7 +118,7 @@ export function StatusChangeForm({
         </Alert>
       )}
 
-      <form ref={formRef} className="space-y-3">
+      <form className="space-y-3">
         <div className="space-y-2">
           <Label htmlFor="new_status">Ubah Status Menjadi</Label>
           <Select value={newStatus || undefined} onValueChange={setNewStatus}>
@@ -143,9 +160,11 @@ export function StatusChangeForm({
             <DialogHeader>
               <DialogTitle>Konfirmasi Ubah Status</DialogTitle>
               <DialogDescription>
-                Ubah status dari &quot;{STATUS_LABELS[currentStatus]}&quot;
-                menjadi &quot;{newStatus ? STATUS_LABELS[newStatus] : ""}&quot;?
-                Perubahan ini tercatat permanen di riwayat.
+                Ubah status dari &quot;
+                {currentLabel}
+                &quot; menjadi &quot;
+                {newStatus ? STATUS_LABELS[newStatus] ?? newStatus : ""}
+                &quot;? Perubahan ini tercatat permanen di riwayat.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>

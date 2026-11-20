@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/jwt";
 
-const WARGA_PATHS = ["/beranda", "/laporan"];
 const ADMIN_PATHS = ["/admin"];
 const AUTH_PATHS = ["/login", "/register"];
 
@@ -15,20 +14,24 @@ export async function proxy(request: NextRequest) {
     request.cookies.get(SESSION_COOKIE)?.value
   );
 
-  const isWarga = WARGA_PATHS.some((p) => isSamePath(pathname, p));
   const isAdmin = ADMIN_PATHS.some((p) => isSamePath(pathname, p));
   const isAuth = AUTH_PATHS.some((p) => isSamePath(pathname, p));
-  const isProtected = isWarga || isAdmin || pathname === "/profil";
+  const isProtected =
+    pathname === "/laporan" ||
+    pathname === "/laporan/baru" ||
+    isAdmin ||
+    pathname === "/profil";
 
-  const redirect = (to: string) => {
+  const redirect = (to: string, next?: string) => {
     const url = request.nextUrl.clone();
     url.pathname = to;
     url.search = "";
+    if (next) url.searchParams.set("next", next);
     return NextResponse.redirect(url);
   };
 
   if (isProtected && !session) {
-    return redirect("/login");
+    return redirect("/login", pathname + request.nextUrl.search);
   }
 
   if (session && isAuth) {
@@ -37,12 +40,6 @@ export async function proxy(request: NextRequest) {
 
   if (session && isAdmin && session.role !== "admin") {
     return redirect("/beranda");
-  }
-
-  // Area warga = ruang kerja warga; admin diarahkan ke panel admin
-  // (kecuali /profil yang boleh dibuka kedua role).
-  if (session && session.role === "admin" && isWarga) {
-    return redirect("/admin");
   }
 
   return NextResponse.next();

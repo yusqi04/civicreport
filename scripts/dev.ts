@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { startLocalDb, loadEnvFile } from "./lib/local-db";
 
 async function main() {
-  loadEnvFile();
+  loadEnvFile({ overrideKeys: ["DATABASE_URL", "SESSION_SECRET"] });
   const db = await startLocalDb();
 
   const child = spawn("npx", ["next", "dev"], {

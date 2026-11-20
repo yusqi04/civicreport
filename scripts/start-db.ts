@@ -4,7 +4,6 @@ async function main() {
   loadEnvFile();
   const db = await startLocalDb();
   console.log("[db] siap. Tekan Ctrl+C untuk menghentikan.");
-  console.log("[db] DATABASE_URL =", process.env.DATABASE_URL);
 
   await new Promise<void>((resolve) => {
     const done = async () => {

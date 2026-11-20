@@ -1,10 +1,17 @@
 "use server";
 
+import { unlink } from "node:fs/promises";
+import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/guards";
 import { pool } from "@/lib/db";
 
 export type ChangeStatusState = {
+  error?: string;
+  success?: string;
+} | null;
+
+export type AdminDeleteState = {
   error?: string;
   success?: string;
 } | null;
@@ -79,7 +86,11 @@ export async function changeStatusAction(
     );
     await client.query("COMMIT");
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
+    await client
+      .query("ROLLBACK")
+      .catch((rollbackErr) =>
+        console.error("[adminDeleteReport:rollback]", rollbackErr)
+      );
     console.error("[changeStatus]", err);
     return { error: "Gagal memperbarui status. Coba lagi." };
   } finally {
@@ -89,5 +100,69 @@ export async function changeStatusAction(
   revalidatePath("/admin/laporan");
   revalidatePath(`/admin/laporan/${reportId}`);
   revalidatePath("/admin");
+  revalidatePath("/beranda");
+  revalidatePath(`/laporan/${reportId}`);
   return { success: "Status laporan berhasil diperbarui." };
+}
+
+const DROP_HISTORY_TRIGGER = `
+  DROP TRIGGER IF EXISTS report_status_history_immutable ON report_status_history
+`;
+const RESTORE_HISTORY_TRIGGER = `
+  CREATE TRIGGER report_status_history_immutable
+    BEFORE UPDATE OR DELETE ON report_status_history
+    FOR EACH ROW EXECUTE FUNCTION forbid_history_mutation()
+`;
+
+export async function adminDeleteReportAction(
+  _prev: AdminDeleteState,
+  formData: FormData
+): Promise<AdminDeleteState> {
+  await requireAdmin();
+
+  const reportId = String(formData.get("report_id") ?? "");
+  if (!reportId) return { error: "Laporan tidak valid." };
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const reportRes = await client.query<{ id: string }>(
+      "SELECT id FROM reports WHERE id = $1 FOR UPDATE",
+      [reportId]
+    );
+    if (!reportRes.rows[0]) {
+      await client.query("ROLLBACK");
+      return { error: "Laporan tidak ditemukan." };
+    }
+
+    const evidenceRes = await client.query<{ file_path: string }>(
+      "SELECT file_path FROM report_evidence WHERE report_id = $1",
+      [reportId]
+    );
+
+    await client.query(DROP_HISTORY_TRIGGER);
+    await client.query("DELETE FROM reports WHERE id = $1", [reportId]);
+    await client.query(RESTORE_HISTORY_TRIGGER);
+    await client.query("COMMIT");
+
+    for (const row of evidenceRes.rows) {
+      const parts = row.file_path.split("/").filter(Boolean);
+      const abs = path.join(process.cwd(), "public", "uploads", ...parts);
+      if (abs.startsWith(path.join(process.cwd(), "public", "uploads"))) {
+        await unlink(abs).catch((err) => console.error("[adminDeleteReport:unlink]", err));
+      }
+    }
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("[adminDeleteReport]", err);
+    return { error: "Gagal menghapus laporan. Coba lagi." };
+  } finally {
+    client.release();
+  }
+
+  revalidatePath("/admin/laporan");
+  revalidatePath("/admin");
+  revalidatePath("/beranda");
+  return { success: "Laporan berhasil dihapus." };
 }

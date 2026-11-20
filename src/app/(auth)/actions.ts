@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { pool } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession, destroySession } from "@/lib/auth/session";
+import { getSafeNextPath } from "@/lib/auth/redirect";
 import { loginSchema, registerSchema } from "@/lib/validations/auth";
 
 export type AuthFormState = { error?: string } | null;
@@ -50,7 +51,7 @@ export async function registerAction(
   }
 
   await createSession({ sub: userId, role, name: full_name.trim() });
-  redirect("/beranda");
+  redirect(getSafeNextPath(formData.get("next")) ?? "/beranda");
 }
 
 export async function loginAction(
@@ -85,7 +86,10 @@ export async function loginAction(
   }
 
   await createSession({ sub: row.id, role: row.role, name: row.full_name });
-  redirect(row.role === "admin" ? "/admin" : "/beranda");
+  redirect(
+    getSafeNextPath(formData.get("next")) ??
+      (row.role === "admin" ? "/admin" : "/beranda")
+  );
 }
 
 export async function logoutAction(): Promise<void> {

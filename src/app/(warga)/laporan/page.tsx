@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth/guards";
 import { pool } from "@/lib/db";
 import { StatusBadge } from "@/components/status-badge";
+import { AutoRefresh } from "@/components/auto-refresh";
+import { DeleteReportButton } from "@/components/delete-report-button";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -89,6 +91,8 @@ export default async function RiwayatPage({
 
   return (
     <div className="space-y-4">
+      <AutoRefresh intervalMs={15000} />
+
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Riwayat Laporan</h1>
         <p className="text-sm text-muted-foreground">
@@ -142,10 +146,10 @@ export default async function RiwayatPage({
           ) : (
             <ul className="divide-y">
               {listRes.rows.map((row) => (
-                <li key={row.id}>
+                <li key={row.id} className="flex items-center gap-2">
                   <Link
                     href={`/laporan/${row.id}`}
-                    className="flex items-center justify-between gap-3 py-3 transition-colors hover:bg-muted/50"
+                    className="min-w-0 flex-1 py-3 transition-colors hover:bg-muted/50"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{row.title}</p>
@@ -158,8 +162,9 @@ export default async function RiwayatPage({
                         })}
                       </p>
                     </div>
-                    <StatusBadge status={row.status} />
                   </Link>
+                  <StatusBadge status={row.status} />
+                  <DeleteReportButton reportId={row.id} compact />
                 </li>
               ))}
             </ul>

@@ -11,18 +11,22 @@ export default async function BuatLaporanPage() {
   );
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
+    <div className="mx-auto max-w-3xl space-y-5 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Buat Laporan</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm font-semibold text-primary">PARTISIPASI WARGA</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
+          Buat Laporan
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground sm:text-base">
           Isi data berikut untuk melaporkan masalah di lingkungan Anda.
         </p>
       </div>
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle className="text-base">Formulir Laporan</CardTitle>
+          <CardTitle className="text-lg">Formulir Laporan</CardTitle>
           <CardDescription>
-            Judul, kategori, dan deskripsi wajib diisi. Foto bersifat opsional.
+            Lengkapi informasi masalah dan lampirkan foto bukti agar petugas
+            dapat menindaklanjutinya.
           </CardDescription>
         </CardHeader>
         <CardContent>
