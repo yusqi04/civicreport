@@ -5,7 +5,7 @@ import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/guards";
-import { pool } from "@/lib/db";
+import { pool, ensureDatabaseSchema } from "@/lib/db";
 import { extractGpsFromBuffer, reverseGeocode } from "@/lib/exif";
 import {
   ALLOWED_IMAGE_TYPES,
@@ -23,11 +23,14 @@ export async function createReportAction(
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
+  await ensureDatabaseSchema();
+
   const parsed = reportFormSchema.safeParse({
     title: formData.get("title"),
     category_id: formData.get("category_id"),
+    custom_category: formData.get("custom_category") || "",
     description: formData.get("description"),
-    location: formData.get("location"),
+    location: formData.get("location") || "",
     latitude: formData.get("latitude") || "",
     longitude: formData.get("longitude") || "",
   });
@@ -49,49 +52,79 @@ export async function createReportAction(
   const photoFile = photo;
 
   const data = parsed.data;
-  let latitude = data.latitude ? Number(data.latitude) : null;
-  let longitude = data.longitude ? Number(data.longitude) : null;
-  let locationText = data.location.trim();
+  let latitude =
+    data.latitude && data.latitude.trim() !== "" ? Number(data.latitude) : null;
+  let longitude =
+    data.longitude && data.longitude.trim() !== "" ? Number(data.longitude) : null;
+  let locationText = (data.location ?? "").trim();
 
   const photoBuffer = Buffer.from(await photoFile.arrayBuffer());
 
+  // GPS bersifat opsional: jika belum ada, coba baca dari EXIF foto sebagai bantuan opsional
   if (latitude == null || longitude == null) {
-    const gps = await extractGpsFromBuffer(photoBuffer);
-    if (gps) {
-      latitude = gps.latitude;
-      longitude = gps.longitude;
+    try {
+      const gps = await extractGpsFromBuffer(photoBuffer);
+      if (gps && Number.isFinite(gps.latitude) && Number.isFinite(gps.longitude)) {
+        latitude = gps.latitude;
+        longitude = gps.longitude;
+      }
+    } catch {
+      // Abaikan jika foto tidak memiliki EXIF GPS
     }
   }
 
+  // Jika teks lokasi kosong tapi ada GPS, coba dapatkan alamatnya; jika tidak ada, beri fallback default
   if (!locationText) {
     if (latitude != null && longitude != null) {
-      const address = await reverseGeocode(latitude, longitude);
-      locationText =
-        address ??
-        `Koordinat ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+      try {
+        const address = await reverseGeocode(latitude, longitude);
+        locationText =
+          address ??
+          `Koordinat ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+      } catch {
+        locationText = `Koordinat ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+      }
     } else {
-      return { error: "Lokasi wajib diisi (alamat atau GPS dari foto)." };
+      locationText = "Lokasi tidak dicantumkan";
     }
   }
 
   const client = await pool.connect().catch((err) => {
-    console.error("[createReport]", err);
+    console.error("[createReport:connect]", err);
     return null;
   });
-  if (!client) return { error: "Gagal menyimpan laporan. Coba lagi." };
+  if (!client) return { error: "Gagal menghubungkan ke database. Coba lagi." };
 
   let reportId: string;
-  let absolutePath: string | null = null;
   let failureMessage = "Gagal menyimpan laporan. Coba lagi.";
+
   try {
+    // Periksa apakah kategori yang dipilih adalah "Lainnya"
+    const catRes = await client.query<{ name: string }>(
+      "SELECT name FROM report_categories WHERE id = $1",
+      [data.category_id]
+    );
+    const categoryName = catRes.rows[0]?.name?.toLowerCase() ?? "";
+    const isOtherCategory = categoryName === "lainnya";
+
+    let customCategory = (data.custom_category ?? "").trim();
+    if (isOtherCategory) {
+      if (!customCategory || customCategory.length < 2) {
+        return { error: "Mohon sebutkan nama kategori untuk pilihan 'Lainnya'." };
+      }
+    } else {
+      customCategory = "";
+    }
+
     await client.query("BEGIN");
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO reports (user_id, category_id, title, description, location, latitude, longitude, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'submitted')
+      `INSERT INTO reports (user_id, category_id, custom_category, title, description, location, latitude, longitude, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'submitted')
        RETURNING id`,
       [
         user.id,
         data.category_id,
+        customCategory || null,
         data.title.trim(),
         data.description.trim(),
         locationText,
@@ -103,42 +136,40 @@ export async function createReportAction(
     if (!report) throw new Error("Report insert returned no row");
     reportId = report.id;
 
-    const ext = ALLOWED_IMAGE_TYPES[photoFile.type];
+    const ext = ALLOWED_IMAGE_TYPES[photoFile.type] ?? ".jpg";
     const filename = `${reportId}-${Date.now()}${ext}`;
     const relativePath = `${user.id}/${filename}`;
-    const absoluteDir = path.join(process.cwd(), "public", "uploads", user.id);
-    absolutePath = path.join(absoluteDir, filename);
-    failureMessage =
-      "Gagal mengunggah foto. Pastikan koneksi stabil lalu coba lagi.";
-    await mkdir(absoluteDir, { recursive: true });
-    await writeFile(absolutePath, photoBuffer);
+
+    // Simpan foto bukti langsung ke database (Neon BYTEA) agar aman di serverless / Vercel
+    failureMessage = "Gagal menyimpan foto bukti. Pastikan koneksi stabil.";
     await client.query(
-      "INSERT INTO report_evidence (report_id, file_path) VALUES ($1, $2)",
-      [reportId, relativePath]
+      `INSERT INTO report_evidence (report_id, file_path, file_data, mime_type)
+       VALUES ($1, $2, $3, $4)`,
+      [reportId, relativePath, photoBuffer, photoFile.type]
     );
+
+    // Coba simpan ke filesystem lokal untuk cache dev, abaikan jika read-only (Vercel)
+    try {
+      const absoluteDir = path.join(process.cwd(), "public", "uploads", user.id);
+      const absolutePath = path.join(absoluteDir, filename);
+      await mkdir(absoluteDir, { recursive: true });
+      await writeFile(absolutePath, photoBuffer);
+    } catch {
+      // Wajar di Vercel (read-only filesystem); foto sudah tersimpan di database
+    }
+
     failureMessage = "Gagal menyimpan riwayat laporan. Coba lagi.";
     await client.query(
       `INSERT INTO report_status_history (report_id, changed_by, old_status, new_status, note)
        VALUES ($1, $2, NULL, 'submitted', 'Laporan dikirim oleh warga')`,
       [reportId, user.id]
     );
+
     await client.query("COMMIT");
   } catch (err) {
     await client
       .query("ROLLBACK")
       .catch((rollbackErr) => console.error("[createReport:rollback]", rollbackErr));
-    if (absolutePath) {
-      await unlink(absolutePath).catch((cleanupErr) => {
-        if (
-          cleanupErr instanceof Error &&
-          "code" in cleanupErr &&
-          cleanupErr.code === "ENOENT"
-        ) {
-          return;
-        }
-        console.error("[createReport:cleanup]", cleanupErr);
-      });
-    }
     console.error("[createReport]", err);
     return { error: failureMessage };
   } finally {

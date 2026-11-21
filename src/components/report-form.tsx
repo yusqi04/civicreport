@@ -44,6 +44,7 @@ export function ReportForm({ categories }: { categories: Category[] }) {
     defaultValues: {
       title: "",
       category_id: "",
+      custom_category: "",
       description: "",
       location: "",
       latitude: "",
@@ -63,6 +64,9 @@ export function ReportForm({ categories }: { categories: Category[] }) {
   const latitudeValue = useWatch({ control: form.control, name: "latitude" });
   const longitudeValue = useWatch({ control: form.control, name: "longitude" });
   const photoRef = register("photo");
+
+  const selectedCategory = categories.find((c) => c.id === categoryId);
+  const isOtherCategory = selectedCategory?.name?.trim().toLowerCase() === "lainnya";
 
   useEffect(() => {
     return () => {
@@ -87,14 +91,26 @@ export function ReportForm({ categories }: { categories: Category[] }) {
     }
     setErrorPhoto(null);
 
+    if (isOtherCategory && (!data.custom_category || data.custom_category.trim().length < 2)) {
+      form.setError("custom_category", {
+        type: "manual",
+        message: "Sebutkan kategori masalah untuk pilihan Lainnya",
+      });
+      return;
+    }
+
     const fd = new FormData();
     fd.set("title", data.title);
     fd.set("category_id", data.category_id);
+    if (isOtherCategory && data.custom_category) {
+      fd.set("custom_category", data.custom_category.trim());
+    }
     fd.set("description", data.description);
-    fd.set("location", data.location);
+    fd.set("location", data.location ?? "");
     fd.set("latitude", data.latitude ?? "");
     fd.set("longitude", data.longitude ?? "");
     if (file) fd.set("photo", file);
+
     startTransition(() => {
       formAction(fd);
     });
@@ -119,27 +135,32 @@ export function ReportForm({ categories }: { categories: Category[] }) {
     setGpsLoading(true);
     try {
       const gps = await extractGpsFromFile(file);
-      if (!gps) {
-        setGpsStatus("Foto tidak memiliki GPS. Pilih lokasi secara manual.");
-        return;
-      }
+      if (gps && Number.isFinite(gps.latitude) && Number.isFinite(gps.longitude)) {
+        setValue("latitude", String(gps.latitude), { shouldValidate: true });
+        setValue("longitude", String(gps.longitude), { shouldValidate: true });
+        setGpsStatus(
+          `GPS terdeteksi dari foto: ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`
+        );
 
-      setValue("latitude", String(gps.latitude), { shouldValidate: true });
-      setValue("longitude", String(gps.longitude), { shouldValidate: true });
-      setGpsStatus(
-        `Lokasi otomatis dari foto: ${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}`
-      );
-
-      const currentLocation = getValues("location").trim();
-      if (!currentLocation) {
-        const address = await reverseGeocode(gps.latitude, gps.longitude);
-        if (address) {
-          setValue("location", address, { shouldValidate: true });
-          setGpsStatus((s) => (s ? `${s} → ${address}` : address));
+        const currentLocation = getValues("location")?.trim();
+        if (!currentLocation) {
+          try {
+            const address = await reverseGeocode(gps.latitude, gps.longitude);
+            if (address) {
+              setValue("location", address, { shouldValidate: true });
+              setGpsStatus((s) => (s ? `${s} → ${address}` : address));
+            }
+          } catch {
+            // Abaikan error geocode
+          }
         }
+      } else {
+        // Foto tidak punya GPS - tidak apa-apa, GPS tidak wajib
+        setGpsStatus(null);
       }
     } catch {
-      setGpsStatus("Gagal membaca GPS dari foto. Pilih lokasi manual.");
+      // Abaikan error pembacaan EXIF
+      setGpsStatus(null);
     } finally {
       setGpsLoading(false);
     }
@@ -181,7 +202,9 @@ export function ReportForm({ categories }: { categories: Category[] }) {
           <Label htmlFor="category_id">Kategori</Label>
           <Select
             value={categoryId || undefined}
-            onValueChange={(value) => setValue("category_id", value, { shouldValidate: true })}
+            onValueChange={(value) => {
+              setValue("category_id", value, { shouldValidate: true });
+            }}
           >
             <SelectTrigger id="category_id" className="w-full">
               <SelectValue placeholder="Pilih kategori masalah" />
@@ -200,6 +223,26 @@ export function ReportForm({ categories }: { categories: Category[] }) {
         </div>
       </div>
 
+      {isOtherCategory && (
+        <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-4 animate-in fade-in-50">
+          <Label htmlFor="custom_category" className="font-semibold text-primary">
+            Sebutkan Kategori Masalah <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="custom_category"
+            placeholder="Contoh: Pohon tumbang, Hewan liar, Sarang tawon, Polusi suara..."
+            {...register("custom_category")}
+            autoFocus
+          />
+          {errors.custom_category && (
+            <p className="text-sm text-destructive">{errors.custom_category.message}</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Ketik jenis atau kategori masalah yang Anda temui.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-2">
         <Label htmlFor="description">Deskripsi Masalah</Label>
         <Textarea
@@ -214,7 +257,10 @@ export function ReportForm({ categories }: { categories: Category[] }) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="location">Lokasi</Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="location">Lokasi Masalah</Label>
+          <span className="text-xs text-muted-foreground font-normal">GPS opsional (tidak wajib)</span>
+        </div>
         <LocationPicker
           value={locationValue ?? ""}
           latitude={latitudeValue ?? ""}
@@ -270,7 +316,7 @@ export function ReportForm({ categories }: { categories: Category[] }) {
         {gpsLoading && (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-            Membaca lokasi GPS dari foto…
+            Membaca data foto…
           </p>
         )}
         {preview && (
@@ -289,7 +335,7 @@ export function ReportForm({ categories }: { categories: Category[] }) {
         ) : (
           <ImagePlus className="mr-2 h-4 w-4" aria-hidden />
         )}
-        {pending ? "Mengirim…" : "Kirim Laporan"}
+        {pending ? "Mengirim Laporan…" : "Kirim Laporan"}
       </Button>
     </form>
   );

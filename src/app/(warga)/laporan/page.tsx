@@ -72,7 +72,12 @@ export default async function RiwayatPage({
 
   values.push(PER_PAGE, (page - 1) * PER_PAGE);
   const listRes = await pool.query<Row>(
-    `SELECT r.id, r.title, r.status, r.created_at, c.name AS category_name
+    `SELECT r.id, r.title, r.status, r.created_at,
+            CASE
+              WHEN LOWER(TRIM(c.name)) = 'lainnya' AND r.custom_category IS NOT NULL AND TRIM(r.custom_category) <> ''
+              THEN 'Lainnya: ' || TRIM(r.custom_category)
+              ELSE c.name
+            END AS category_name
      FROM reports r
      JOIN report_categories c ON c.id = r.category_id
      WHERE ${where}

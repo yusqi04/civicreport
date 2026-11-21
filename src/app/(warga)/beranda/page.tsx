@@ -36,7 +36,11 @@ export default async function BerandaPage() {
 
   const feedRes = await pool.query<FeedRow>(
     `SELECT r.id, r.title, r.description, r.status, r.created_at,
-            c.name AS category_name,
+            CASE
+              WHEN LOWER(TRIM(c.name)) = 'lainnya' AND r.custom_category IS NOT NULL AND TRIM(r.custom_category) <> ''
+              THEN 'Lainnya: ' || TRIM(r.custom_category)
+              ELSE c.name
+            END AS category_name,
             r.location, r.latitude, r.longitude,
             COALESCE(r.user_id = $1, false) AS is_own,
             COALESCE((

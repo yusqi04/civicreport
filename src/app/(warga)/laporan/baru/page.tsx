@@ -1,14 +1,27 @@
 import { requireUser } from "@/lib/auth/guards";
-import { pool } from "@/lib/db";
+import { pool, ensureDatabaseSchema } from "@/lib/db";
 import { ReportForm } from "@/components/report-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function BuatLaporanPage() {
   await requireUser();
+  await ensureDatabaseSchema();
 
   const { rows } = await pool.query<{ id: string; name: string }>(
-    "SELECT id, name FROM report_categories WHERE is_active = true ORDER BY name"
+    `SELECT DISTINCT ON (LOWER(TRIM(name))) id, name
+     FROM report_categories
+     WHERE is_active = true
+     ORDER BY LOWER(TRIM(name)), created_at ASC`
   );
+
+  // Urutkan kategori secara alfabetis, dengan "Lainnya" ditaruh paling bawah
+  const sortedCategories = [...rows].sort((a, b) => {
+    const aIsOther = a.name.trim().toLowerCase() === "lainnya";
+    const bIsOther = b.name.trim().toLowerCase() === "lainnya";
+    if (aIsOther && !bIsOther) return 1;
+    if (!aIsOther && bIsOther) return -1;
+    return a.name.localeCompare(b.name, "id");
+  });
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 sm:space-y-6">
@@ -30,7 +43,7 @@ export default async function BuatLaporanPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ReportForm categories={rows} />
+          <ReportForm categories={sortedCategories} />
         </CardContent>
       </Card>
     </div>

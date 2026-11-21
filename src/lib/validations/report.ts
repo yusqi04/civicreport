@@ -11,36 +11,27 @@ const coordinate = (max: number, label: string) =>
       { message: `${label} tidak valid (maksimal ${max})` }
     );
 
-export const reportFormSchema = z
-  .object({
-    title: z
-      .string()
-      .min(5, { message: "Judul minimal 5 karakter" })
-      .max(120, { message: "Judul maksimal 120 karakter" }),
-    category_id: z.uuid({ message: "Pilih kategori" }),
-    description: z
-      .string()
-      .min(10, { message: "Deskripsi minimal 10 karakter" })
-      .max(2000, { message: "Deskripsi maksimal 2000 karakter" }),
-    location: z
-      .string()
-      .max(300, { message: "Lokasi maksimal 300 karakter" }),
-    latitude: coordinate(90, "Latitude"),
-    longitude: coordinate(180, "Longitude"),
-    photo: z.unknown().optional(),
-  })
-  .refine(
-    (data) =>
-      data.location.trim().length >= 3 ||
-      (data.latitude != null && data.longitude != null &&
-        Number.isFinite(Number(data.latitude)) &&
-        Number.isFinite(Number(data.longitude))),
-    {
-      message:
-        "Isi lokasi (alamat) atau unggah foto yang memiliki GPS",
-      path: ["location"],
-    }
-  );
+export const reportFormSchema = z.object({
+  title: z
+    .string()
+    .min(5, { message: "Judul minimal 5 karakter" })
+    .max(120, { message: "Judul maksimal 120 karakter" }),
+  category_id: z.string().min(1, { message: "Pilih kategori masalah" }),
+  custom_category: z
+    .string()
+    .max(100, { message: "Kategori maksimal 100 karakter" })
+    .optional(),
+  description: z
+    .string()
+    .min(10, { message: "Deskripsi minimal 10 karakter" })
+    .max(2000, { message: "Deskripsi maksimal 2000 karakter" }),
+  location: z
+    .string()
+    .max(300, { message: "Lokasi maksimal 300 karakter" }),
+  latitude: coordinate(90, "Latitude"),
+  longitude: coordinate(180, "Longitude"),
+  photo: z.unknown().optional(),
+});
 
 export type ReportFormInput = z.infer<typeof reportFormSchema>;
 

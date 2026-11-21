@@ -69,9 +69,18 @@ export default async function AdminLaporanPage({
   const page = Math.max(1, Number(sp.page) || 1);
 
   const categoriesRes = await pool.query<{ id: string; name: string }>(
-    "SELECT id, name FROM report_categories WHERE is_active = true ORDER BY name"
+    `SELECT DISTINCT ON (LOWER(TRIM(name))) id, name
+     FROM report_categories
+     WHERE is_active = true
+     ORDER BY LOWER(TRIM(name)), created_at ASC`
   );
-  const categories = categoriesRes.rows;
+  const categories = [...categoriesRes.rows].sort((a, b) => {
+    const aIsOther = a.name.trim().toLowerCase() === "lainnya";
+    const bIsOther = b.name.trim().toLowerCase() === "lainnya";
+    if (aIsOther && !bIsOther) return 1;
+    if (!aIsOther && bIsOther) return -1;
+    return a.name.localeCompare(b.name, "id");
+  });
   const category = categories.find((c) => c.id === sp.category)?.id;
 
   const conditions: string[] = ["1=1"];
@@ -100,7 +109,12 @@ export default async function AdminLaporanPage({
   values.push(PER_PAGE, (page - 1) * PER_PAGE);
   const listRes = await pool.query<Row>(
     `SELECT r.id, r.title, r.status, r.created_at,
-            p.full_name AS reporter, c.name AS category_name
+            p.full_name AS reporter,
+            CASE
+              WHEN LOWER(TRIM(c.name)) = 'lainnya' AND r.custom_category IS NOT NULL AND TRIM(r.custom_category) <> ''
+              THEN 'Lainnya: ' || TRIM(r.custom_category)
+              ELSE c.name
+            END AS category_name
      FROM reports r
      JOIN profiles p ON p.id = r.user_id
      JOIN report_categories c ON c.id = r.category_id

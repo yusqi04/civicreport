@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { pool, ensureDatabaseSchema } from "@/lib/db";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/validations/report";
 
 export async function GET(
@@ -10,33 +11,55 @@ export async function GET(
   const { path: parts } = await ctx.params;
   if (
     !parts?.length ||
-    parts.some((p) => !p || p.includes("..") || p.includes("/") || p.includes("\\"))
+    parts.some((p) => !p || p.includes("..") || p.includes("\\"))
   ) {
     return new Response("Bad request", { status: 400 });
   }
 
-  const uploadsRoot = path.join(process.cwd(), "public", "uploads");
-  const absolutePath = path.join(uploadsRoot, ...parts);
-  if (!absolutePath.startsWith(uploadsRoot)) {
-    return new Response("Bad request", { status: 400 });
-  }
-
-  const ext = path.extname(absolutePath).toLowerCase();
-  const mime =
+  const relativePath = parts.join("/");
+  const ext = path.extname(parts[parts.length - 1]).toLowerCase();
+  const defaultMime =
     Object.entries(ALLOWED_IMAGE_TYPES).find(([, e]) => e === ext)?.[0] ??
-    "application/octet-stream";
+    "image/jpeg";
 
-  let buffer: Buffer;
+  // 1. Coba baca dari filesystem lokal jika ada (misal di development lokal)
   try {
-    buffer = await readFile(absolutePath);
+    const uploadsRoot = path.join(process.cwd(), "public", "uploads");
+    const absolutePath = path.join(uploadsRoot, ...parts);
+    if (absolutePath.startsWith(uploadsRoot)) {
+      const buffer = await readFile(absolutePath);
+      return new NextResponse(new Uint8Array(buffer), {
+        headers: {
+          "Content-Type": defaultMime,
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    }
   } catch {
-    return new Response("Not found", { status: 404 });
+    // File di disk tidak ada / read-only filesystem di Vercel, lanjut ambil dari database
   }
 
-  return new NextResponse(new Uint8Array(buffer), {
-    headers: {
-      "Content-Type": mime,
-      "Cache-Control": "public, max-age=3600",
-    },
-  });
+  // 2. Ambil dari database Neon
+  try {
+    await ensureDatabaseSchema();
+    const res = await pool.query<{ file_data: Buffer; mime_type: string | null }>(
+      `SELECT file_data, mime_type FROM report_evidence WHERE file_path = $1 LIMIT 1`,
+      [relativePath]
+    );
+
+    const row = res.rows[0];
+    if (row && row.file_data) {
+      const mime = row.mime_type || defaultMime;
+      return new NextResponse(new Uint8Array(row.file_data), {
+        headers: {
+          "Content-Type": mime,
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    }
+  } catch (dbErr) {
+    console.error("[uploads:route:db]", dbErr);
+  }
+
+  return new Response("Not found", { status: 404 });
 }

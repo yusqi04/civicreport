@@ -54,7 +54,11 @@ export default async function AdminDetailLaporanPage({
   const reportRes = await pool.query<ReportRow>(
     `SELECT r.id, r.title, r.description, r.location, r.latitude, r.longitude,
             r.status, r.created_at, r.updated_at,
-            c.name AS category_name,
+            CASE
+              WHEN LOWER(TRIM(c.name)) = 'lainnya' AND r.custom_category IS NOT NULL AND TRIM(r.custom_category) <> ''
+              THEN 'Lainnya: ' || TRIM(r.custom_category)
+              ELSE c.name
+            END AS category_name,
             p.full_name AS reporter, p.email AS reporter_email
      FROM reports r
      JOIN report_categories c ON c.id = r.category_id
