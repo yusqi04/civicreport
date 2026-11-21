@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/guards";
 import { pool } from "@/lib/db";
@@ -69,12 +72,16 @@ export default async function AdminLaporanPage({
   const page = Math.max(1, Number(sp.page) || 1);
 
   const categoriesRes = await pool.query<{ id: string; name: string }>(
-    `SELECT DISTINCT ON (LOWER(TRIM(name))) id, name
-     FROM report_categories
-     WHERE is_active = true
-     ORDER BY LOWER(TRIM(name)), created_at ASC`
+    "SELECT id, name FROM report_categories WHERE is_active = true ORDER BY created_at ASC"
   );
-  const categories = [...categoriesRes.rows].sort((a, b) => {
+  const categoryMap = new Map<string, { id: string; name: string }>();
+  for (const row of categoriesRes.rows) {
+    const key = row.name.trim().toLowerCase();
+    if (!categoryMap.has(key)) {
+      categoryMap.set(key, { id: row.id, name: row.name.trim() });
+    }
+  }
+  const categories = Array.from(categoryMap.values()).sort((a, b) => {
     const aIsOther = a.name.trim().toLowerCase() === "lainnya";
     const bIsOther = b.name.trim().toLowerCase() === "lainnya";
     if (aIsOther && !bIsOther) return 1;

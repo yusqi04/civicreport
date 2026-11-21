@@ -99,11 +99,27 @@ export async function createReportAction(
   let failureMessage = "Gagal menyimpan laporan. Coba lagi.";
 
   try {
-    // Periksa apakah kategori yang dipilih adalah "Lainnya"
-    const catRes = await client.query<{ name: string }>(
-      "SELECT name FROM report_categories WHERE id = $1",
-      [data.category_id]
+    // Periksa apakah kategori yang dipilih valid
+    let activeCategoryId = data.category_id;
+    let catRes = await client.query<{ id: string; name: string }>(
+      "SELECT id, name FROM report_categories WHERE id = $1",
+      [activeCategoryId]
     );
+
+    // Jika ID dari form tidak ditemukan (misal karena ID lama/duplikat sudah dibersihkan),
+    // gunakan fallback kategori aktif yang ada
+    if (!catRes.rows[0]) {
+      const fallback = await client.query<{ id: string; name: string }>(
+        "SELECT id, name FROM report_categories WHERE is_active = true ORDER BY created_at ASC LIMIT 1"
+      );
+      if (fallback.rows[0]) {
+        activeCategoryId = fallback.rows[0].id;
+        catRes = fallback;
+      } else {
+        return { error: "Kategori masalah tidak ditemukan. Muat ulang halaman lalu coba lagi." };
+      }
+    }
+
     const categoryName = catRes.rows[0]?.name?.toLowerCase() ?? "";
     const isOtherCategory = categoryName === "lainnya";
 
@@ -123,7 +139,7 @@ export async function createReportAction(
        RETURNING id`,
       [
         user.id,
-        data.category_id,
+        activeCategoryId,
         customCategory || null,
         data.title.trim(),
         data.description.trim(),
@@ -171,7 +187,8 @@ export async function createReportAction(
       .query("ROLLBACK")
       .catch((rollbackErr) => console.error("[createReport:rollback]", rollbackErr));
     console.error("[createReport]", err);
-    return { error: failureMessage };
+    const detail = err instanceof Error ? err.message : String(err);
+    return { error: `Gagal menyimpan laporan: ${detail}` };
   } finally {
     client.release();
   }
